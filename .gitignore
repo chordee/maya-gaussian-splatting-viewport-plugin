@@ -3,3 +3,4 @@ build/
 *.suo
 .vs/
 .claude/
+maya_gaussian_splat_blueprint.md
