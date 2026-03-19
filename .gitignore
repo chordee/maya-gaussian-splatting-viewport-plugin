@@ -3,5 +3,6 @@ build/
 *.suo
 .vs/
 .claude/
+.vscode/
 maya_gaussian_splat_blueprint.md
 screenshot/
