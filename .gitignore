@@ -3,4 +3,5 @@ build/
 *.suo
 .vs/
 .claude/
-.vscode/screenshot/
+.vscode/
+screenshot/
