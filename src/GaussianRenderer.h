@@ -40,23 +40,29 @@ private:
     GLuint loadShader(GLenum type, const char* path);
     GLuint linkProgram(GLuint vert, GLuint frag, GLuint comp = 0);
 
-    GLuint vao_         = 0;
-    GLuint posBuf_      = 0;
-    GLuint rotBuf_      = 0;
-    GLuint sclBuf_      = 0;
-    GLuint shBuf_       = 0;
-    GLuint indexBuf_    = 0; // Sorted indices
-    GLuint keyBuf_      = 0; // Depths for sorting
-    GLuint drawProgram_ = 0;
-    GLuint sortProgram_ = 0;
-    GLuint depthProgram_ = 0; // Compute shader to calc depths
-    GLuint quadVBO_     = 0;
+    GLuint vao_          = 0;
+    GLuint posBuf_       = 0;
+    GLuint rotBuf_       = 0;
+    GLuint sclBuf_       = 0;
+    GLuint shBuf_        = 0;
+    GLuint sh1Buf_       = 0; // SH degree-1 coefficients (binding 6)
+    GLuint indexBuf_     = 0; // Sorted indices
+    GLuint keyBuf_       = 0; // Depths for sorting
+    GLuint drawProgram_  = 0;
+    GLuint sortProgram_  = 0;
+    GLuint depthProgram_ = 0;
+    GLuint quadVBO_      = 0;
 
     int      splatCount_ = 0;
-    uint32_t sortN_      = 0; // next power-of-2 >= splatCount_, used for bitonic sort allocation
+    uint32_t sortN_      = 0;
+    bool     hasSH1_     = false;
 
-    SplatData pendingData_;
-    bool      newDataAvailable_ = false;
+    // Sort-on-move: skip dispatch when camera hasn't changed.
+    float prevWVM_[16]   = {};
+    bool  sortDirty_     = true; // force sort after new data upload
+
+    SplatData  pendingData_;
+    bool       newDataAvailable_ = false;
     std::mutex dataMutex_;
 
     static std::string s_shaderDir;

@@ -5,9 +5,10 @@ in Autodesk Maya 2024 Viewport 2.0.
 
 ## Features
 
-- Load standard 3DGS `.ply` files (position, rotation, scale, opacity, SH DC)
+- Load standard 3DGS `.ply` files (position, rotation, scale, opacity, SH coefficients)
+- View-dependent color via SH degree 0 and 1 (auto-detected from PLY)
 - EWA Splatting: full GPU projection of 3D covariance to 2D ellipses
-- GPU Bitonic Sort: per-frame depth sort for correct transparency blending
+- GPU Bitonic Sort: depth sort skipped when camera is static (performance optimization)
 - Maya scene integration: Reversed-Z depth test compatible, non-destructive
 - Maya node attributes: `filePath`, `splatScale`, `opacityMult`
 
@@ -76,11 +77,9 @@ third_party/tinyply     → PLY parsing library
 
 ## Known Limitations
 
-- Only SH degree 0 (DC term) is used; view-dependent color (degree 1+)
-  is not yet implemented.
-- Large scenes (3M+ splats) require ~250 GPU dispatches per frame,
-  which may trigger TDR on lower-end GPUs.
-- Z-occlusion against Maya opaque geometry is not fully integrated.
+- SH degree 2 and 3 (higher-frequency view-dependent color) are not yet implemented.
+- Large scenes (3M+ splats) require ~250 GPU dispatches per frame when the camera
+  moves, which may trigger TDR on lower-end GPUs.
 
 ## License
 
