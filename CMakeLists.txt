@@ -4,18 +4,33 @@ project(GaussianSplatPlugin)
 set(CMAKE_CXX_STANDARD 17)
 
 # ---------------------------------------------------------------------------
-# Maya version — drives default DevKit / install paths and the API year define.
-# Override any individual path to point elsewhere without changing MAYA_VERSION.
+# Maya configuration
+#
+# Specify paths directly:
+#   cmake -B build -DMAYA_DEVKIT="D:/SDKs/devkitBase2025"
+#                  -DMAYA_INSTALL="C:/Program Files/Autodesk/Maya2025"
+#
+# Or set MAYA_VERSION and let CMake derive standard Windows paths:
+#   cmake -B build -DMAYA_VERSION=2025
+#
+# MAYA_DEVKIT / MAYA_INSTALL always take precedence when explicitly set.
 # ---------------------------------------------------------------------------
-set(MAYA_VERSION "2024" CACHE STRING "Target Maya version (e.g. 2024, 2025, 2026)")
+set(MAYA_VERSION "2024" CACHE STRING
+    "Target Maya version — used to derive default DevKit / install paths (e.g. 2024, 2025, 2026)")
 
-set(MAYA_DEVKIT
-    "C:/Users/$ENV{USERNAME}/devkitBase${MAYA_VERSION}"
-    CACHE PATH "Maya DevKit root (headers + import libs)")
+set(MAYA_DEVKIT "" CACHE PATH
+    "Maya DevKit root (headers + import libs). Leave empty to auto-derive from MAYA_VERSION.")
 
-set(MAYA_INSTALL
-    "C:/Program Files/Autodesk/Maya${MAYA_VERSION}"
-    CACHE PATH "Maya installation root (runtime DLLs)")
+set(MAYA_INSTALL "" CACHE PATH
+    "Maya installation root (runtime DLLs). Leave empty to auto-derive from MAYA_VERSION.")
+
+# Derive paths from MAYA_VERSION when not explicitly set
+if(NOT MAYA_DEVKIT)
+    set(MAYA_DEVKIT "C:/Users/$ENV{USERNAME}/devkitBase${MAYA_VERSION}")
+endif()
+if(NOT MAYA_INSTALL)
+    set(MAYA_INSTALL "C:/Program Files/Autodesk/Maya${MAYA_VERSION}")
+endif()
 
 # ---------------------------------------------------------------------------
 # Validate DevKit
