@@ -6,6 +6,7 @@
 #include <numeric>
 #include <algorithm>
 #include <mutex>
+#include <cstring>
 
 std::string GaussianRenderer::s_shaderDir;
 
@@ -25,6 +26,7 @@ void GaussianRenderer::initGL() {
     glGenBuffers(1, &rotBuf_);
     glGenBuffers(1, &sclBuf_);
     glGenBuffers(1, &shBuf_);
+    glGenBuffers(1, &sh1Buf_);
     glGenBuffers(1, &indexBuf_);
     glGenBuffers(1, &keyBuf_);
 
@@ -39,6 +41,7 @@ void GaussianRenderer::destroyGL() {
     if (rotBuf_) glDeleteBuffers(1, &rotBuf_);
     if (sclBuf_) glDeleteBuffers(1, &sclBuf_);
     if (shBuf_) glDeleteBuffers(1, &shBuf_);
+    if (sh1Buf_) glDeleteBuffers(1, &sh1Buf_);
     if (indexBuf_) glDeleteBuffers(1, &indexBuf_);
     if (keyBuf_) glDeleteBuffers(1, &keyBuf_);
     if (drawProgram_) glDeleteProgram(drawProgram_);
@@ -50,6 +53,8 @@ void GaussianRenderer::destroyGL() {
 void GaussianRenderer::uploadSplats(const SplatData& data) {
     initGL();
     splatCount_ = data.splatCount;
+    hasSH1_     = data.shDegree >= 1 && !data.sh_rest1.empty();
+    sortDirty_  = true; // force re-sort after new data
     if (splatCount_ == 0) return;
 
     // Compute next power-of-2 for bitonic sort — the sort must operate on n entries
@@ -68,6 +73,17 @@ void GaussianRenderer::uploadSplats(const SplatData& data) {
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, shBuf_);
     glBufferData(GL_SHADER_STORAGE_BUFFER, data.sh_dc.size() * sizeof(float), data.sh_dc.data(), GL_STATIC_DRAW);
+
+    // SH degree-1 buffer (binding 6): 9 floats per splat.
+    // Upload a single zero float when SH1 is absent so the buffer object is valid.
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, sh1Buf_);
+    if (hasSH1_) {
+        glBufferData(GL_SHADER_STORAGE_BUFFER, data.sh_rest1.size() * sizeof(float),
+                     data.sh_rest1.data(), GL_STATIC_DRAW);
+    } else {
+        float zero = 0.0f;
+        glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(float), &zero, GL_STATIC_DRAW);
+    }
 
     // IndexBuffer: size = sortN_. Valid entries [0..splatCount_-1] = identity order.
     // Padding entries [splatCount_..sortN_-1] = index 0 (safe dummy, never drawn).
@@ -89,11 +105,23 @@ void GaussianRenderer::uploadSplats(const SplatData& data) {
 void GaussianRenderer::sort(const MMatrix& wvm) {
     if (splatCount_ == 0) return;
 
+    // Build float matrix and check whether the camera moved since last sort.
+    float f_wvm[16];
+    for (int i = 0; i < 4; ++i) for (int j = 0; j < 4; ++j) f_wvm[i*4+j] = (float)wvm[i][j];
+
+    if (!sortDirty_) {
+        bool changed = false;
+        for (int k = 0; k < 16 && !changed; ++k)
+            if (std::abs(f_wvm[k] - prevWVM_[k]) > 1e-6f) changed = true;
+        if (!changed) return;
+    }
+    sortDirty_ = false;
+    std::memcpy(prevWVM_, f_wvm, sizeof(f_wvm));
+
     // 1. Calculate Depths
     glUseProgram(depthProgram_);
-    float f_wvm[16];
-    for(int i=0; i<4; ++i) for(int j=0; j<4; ++j) f_wvm[i*4+j] = (float)wvm[i][j];
     glUniformMatrix4fv(glGetUniformLocation(depthProgram_, "u_wvm"), 1, GL_FALSE, f_wvm);
+
     glUniform1ui(glGetUniformLocation(depthProgram_, "u_numSplats"), splatCount_);
 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, posBuf_);
@@ -174,13 +202,20 @@ void GaussianRenderer::draw(const MHWRender::MDrawContext& ctx, float splatScale
     glUniform1f(glGetUniformLocation(drawProgram_, "u_splatScale"), splatScale);
     glUniform1f(glGetUniformLocation(drawProgram_, "u_opacityMult"), opacityMult);
     glUniform4iv(glGetUniformLocation(drawProgram_, "u_viewport"), 1, viewport);
+    glUniform1i(glGetUniformLocation(drawProgram_, "u_shDegree"), hasSH1_ ? 1 : 0);
+
+    // Camera position in world space = last column of inverse(WVM).
+    MMatrix iwvm = wvm.inverse();
+    float camPos[3] = { (float)iwvm[3][0], (float)iwvm[3][1], (float)iwvm[3][2] };
+    glUniform3fv(glGetUniformLocation(drawProgram_, "u_camPos"), 1, camPos);
 
     glBindVertexArray(vao_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, posBuf_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, rotBuf_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, sclBuf_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, shBuf_);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, indexBuf_); // Use sorted indices
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, indexBuf_);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, sh1Buf_);
 
     glDrawArraysInstanced(GL_TRIANGLES, 0, 6, splatCount_);
 

@@ -5,16 +5,26 @@ layout(std430, binding = 1) readonly buffer RotBuffer   { vec4 rotations[]; };
 layout(std430, binding = 2) readonly buffer SclBuffer   { vec4 scales[];    };
 layout(std430, binding = 3) readonly buffer SHBuffer    { vec4 sh_dc[];     };
 layout(std430, binding = 5) readonly buffer IndexBuffer { uint indices[];   };
+// SH degree-1: 9 floats per splat packed as float array.
+// Layout per splat (base = splatIdx * 9):
+//   [0..2] = Y_{1,-1} RGB,  [3..5] = Y_{1,0} RGB,  [6..8] = Y_{1,1} RGB
+layout(std430, binding = 6) readonly buffer SH1Buffer   { float sh_rest1[]; };
 
 uniform mat4  u_wvm;
 uniform mat4  u_pm;
 uniform float u_splatScale;
 uniform float u_opacityMult;
 uniform ivec4 u_viewport;
+uniform int   u_shDegree;   // 0 = DC only, 1 = degree-1 view-dependent
+uniform vec3  u_camPos;     // camera position in world space
 
 out vec2  v_uv;
 out vec4  v_color;
 out float v_opacity;
+
+// SH basis constants
+const float C0 = 0.28209479177387814;
+const float C1 = 0.4886025119029199;
 
 mat3 quatToMat(vec4 q) {
     float w=q.x, x=q.y, y=q.z, z=q.w;
@@ -32,7 +42,7 @@ void main() {
     vec4  rot  = rotations[splatIdx];
     vec3  scl  = scales[splatIdx].xyz;
     float opac = scales[splatIdx].w;
-    vec3  sh   = sh_dc[splatIdx].xyz;
+    vec3  dc   = sh_dc[splatIdx].xyz;
 
     // 1. Transform to View Space
     vec4 viewPos = u_wvm * vec4(pos, 1.0);
@@ -43,7 +53,28 @@ void main() {
         return;
     }
 
-    // 2. Covariance Projection (EWA splatting)
+    // 2. SH Color Evaluation
+    vec3 color = C0 * dc;
+
+    if (u_shDegree >= 1) {
+        // View direction in world space (from splat to camera)
+        vec3 dir = normalize(u_camPos - pos);
+        float dx = dir.x, dy = dir.y, dz = dir.z;
+
+        uint base = splatIdx * 9u;
+        vec3 sh1_0 = vec3(sh_rest1[base+0], sh_rest1[base+1], sh_rest1[base+2]); // Y_{1,-1}
+        vec3 sh1_1 = vec3(sh_rest1[base+3], sh_rest1[base+4], sh_rest1[base+5]); // Y_{1,0}
+        vec3 sh1_2 = vec3(sh_rest1[base+6], sh_rest1[base+7], sh_rest1[base+8]); // Y_{1,1}
+
+        // Real SH degree-1 basis: Y_{1,-1} = -C1*y, Y_{1,0} = C1*z, Y_{1,1} = -C1*x
+        color += (-C1 * dy) * sh1_0
+               + ( C1 * dz) * sh1_1
+               + (-C1 * dx) * sh1_2;
+    }
+
+    color = clamp(color + 0.5, 0.0, 1.0);
+
+    // 3. Covariance Projection (EWA splatting)
     mat3 R = quatToMat(rot);
     mat3 S = mat3(scl.x, 0.0, 0.0,  0.0, scl.y, 0.0,  0.0, 0.0, scl.z);
     mat3 Sigma = R * S * S * transpose(R);
@@ -91,6 +122,6 @@ void main() {
 
     gl_Position = clipCenter;
     v_uv        = quad;
-    v_color     = vec4(clamp(sh * 0.28209 + 0.5, 0.0, 1.0), 1.0);
+    v_color     = vec4(color, 1.0);
     v_opacity   = opac * u_opacityMult;
 }

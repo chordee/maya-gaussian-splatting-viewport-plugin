@@ -5,9 +5,10 @@ in Autodesk Maya 2024 Viewport 2.0.
 
 ## Features
 
-- Load standard 3DGS `.ply` files (position, rotation, scale, opacity, SH DC)
+- Load standard 3DGS `.ply` files (position, rotation, scale, opacity, SH coefficients)
+- View-dependent color via SH degree 0 and 1 (auto-detected from PLY)
 - EWA Splatting: full GPU projection of 3D covariance to 2D ellipses
-- GPU Bitonic Sort: per-frame depth sort for correct transparency blending
+- GPU Bitonic Sort: depth sort skipped when camera is static (performance optimization)
 - Maya scene integration: Reversed-Z depth test compatible, non-destructive
 - Maya node attributes: `filePath`, `splatScale`, `opacityMult`
 
@@ -19,16 +20,18 @@ in Autodesk Maya 2024 Viewport 2.0.
 | Maya DevKit | 2024 |
 | MSVC | 2019 or 2022 |
 | CMake | ≥ 3.20 |
-| vcpkg + GLEW | x64-windows |
+| vcpkg | any version |
 
 ## Build
 
-```bat
-:: 1. Install GLEW (if not already installed)
-vcpkg install glew:x64-windows
+GLEW is declared in `vcpkg.json` and installed automatically on first configure
+when `VCPKG_ROOT` is set. It is linked statically — no `glew32.dll` needed at runtime.
 
-:: 2. Configure and build
-cmake -B build -DMAYA_DEVKIT="C:/Users/<user>/devkitBase2024"
+```bat
+cmake -B build ^
+    -DMAYA_DEVKIT="C:/Users/you/devkitBase2024" ^
+    -DCMAKE_TOOLCHAIN_FILE="%VCPKG_ROOT%/scripts/buildsystems/vcpkg.cmake" ^
+    -DVCPKG_TARGET_TRIPLET="x64-windows-static-md"
 cmake --build build --config Release
 ```
 
@@ -41,7 +44,11 @@ Output is placed in `build/Release/`:
 
 1. Copy `build/Release/GaussianSplatPlugin.mll` and `build/Release/shaders/`
    to your Maya plug-ins directory, or load directly from `build/Release/`.
-2. Ensure `glew32.dll` is in the same directory or on the system `PATH`.
+2. **Set Viewport 2.0 to OpenGL Core Profile** — this plugin uses OpenGL and will
+   not render under DirectX 11 (Maya's default on Windows):
+   **Windows → Settings/Preferences → Preferences → Display → Viewport 2.0**
+   → set *Rendering engine* to **OpenGL Core Profile (Compatibility)**.
+   Restart Maya after changing this setting.
 3. In Maya: **Windows → Settings/Preferences → Plug-in Manager**
    → load `GaussianSplatPlugin.mll`.
 
@@ -76,11 +83,9 @@ third_party/tinyply     → PLY parsing library
 
 ## Known Limitations
 
-- Only SH degree 0 (DC term) is used; view-dependent color (degree 1+)
-  is not yet implemented.
-- Large scenes (3M+ splats) require ~250 GPU dispatches per frame,
-  which may trigger TDR on lower-end GPUs.
-- Z-occlusion against Maya opaque geometry is not fully integrated.
+- SH degree 2 and 3 (higher-frequency view-dependent color) are not yet implemented.
+- Large scenes (3M+ splats) require ~250 GPU dispatches per frame when the camera
+  moves, which may trigger TDR on lower-end GPUs.
 
 ## License
 
