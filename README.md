@@ -28,14 +28,8 @@ in Autodesk Maya 2024 Viewport 2.0.
 :: 1. Install GLEW (if not already installed)
 vcpkg install glew:x64-windows
 
-:: 2. Configure
-:: Option A — specify full paths explicitly (recommended if non-standard install)
-cmake -B build ^
-    -DMAYA_DEVKIT="C:/Users/you/devkitBase2024" ^
-    -DMAYA_INSTALL="C:/Program Files/Autodesk/Maya2024"
-
-:: Option B — let MAYA_VERSION derive standard Windows default paths
-cmake -B build -DMAYA_VERSION=2024
+:: 2. Configure — MAYA_DEVKIT is required
+cmake -B build -DMAYA_DEVKIT="C:/Users/you/devkitBase2024"
 
 :: 3. Build
 cmake --build build --config Release
