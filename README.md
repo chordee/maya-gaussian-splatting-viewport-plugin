@@ -20,18 +20,18 @@ in Autodesk Maya 2024 Viewport 2.0.
 | Maya DevKit | 2024 |
 | MSVC | 2019 or 2022 |
 | CMake | ≥ 3.20 |
-| vcpkg + GLEW | x64-windows |
+| vcpkg | any version |
 
 ## Build
 
+GLEW is declared in `vcpkg.json` and installed automatically on first configure
+when `VCPKG_ROOT` is set. It is linked statically — no `glew32.dll` needed at runtime.
+
 ```bat
-:: 1. Install GLEW (if not already installed)
-vcpkg install glew:x64-windows
-
-:: 2. Configure — MAYA_DEVKIT is required
-cmake -B build -DMAYA_DEVKIT="C:/Users/you/devkitBase2024"
-
-:: 3. Build
+cmake -B build ^
+    -DMAYA_DEVKIT="C:/Users/you/devkitBase2024" ^
+    -DCMAKE_TOOLCHAIN_FILE="%VCPKG_ROOT%/scripts/buildsystems/vcpkg.cmake" ^
+    -DVCPKG_TARGET_TRIPLET="x64-windows-static-md"
 cmake --build build --config Release
 ```
 
@@ -44,8 +44,7 @@ Output is placed in `build/Release/`:
 
 1. Copy `build/Release/GaussianSplatPlugin.mll` and `build/Release/shaders/`
    to your Maya plug-ins directory, or load directly from `build/Release/`.
-2. Ensure `glew32.dll` is in the same directory or on the system `PATH`.
-3. In Maya: **Windows → Settings/Preferences → Plug-in Manager**
+2. In Maya: **Windows → Settings/Preferences → Plug-in Manager**
    → load `GaussianSplatPlugin.mll`.
 
 ## Usage

@@ -1,4 +1,28 @@
 cmake_minimum_required(VERSION 3.20)
+
+# ---------------------------------------------------------------------------
+# vcpkg integration — must be configured before project().
+#
+# If the VCPKG_ROOT environment variable is set, the toolchain and triplet are
+# applied automatically.  You can still override them on the command line:
+#   cmake -B build -DCMAKE_TOOLCHAIN_FILE="..." -DVCPKG_TARGET_TRIPLET="..."
+#
+# Default triplet: x64-windows-static-md
+#   Static GLEW linked into the .mll — no glew32.dll needed at runtime.
+#   Uses /MD (dynamic CRT) to match Maya's own runtime, avoiding CRT conflicts.
+# ---------------------------------------------------------------------------
+if(DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    set(CMAKE_TOOLCHAIN_FILE
+        "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+        CACHE STRING "vcpkg toolchain (auto-detected from VCPKG_ROOT)")
+    message(STATUS "[vcpkg] Auto-detected at $ENV{VCPKG_ROOT}")
+endif()
+
+if(DEFINED CMAKE_TOOLCHAIN_FILE AND NOT DEFINED VCPKG_TARGET_TRIPLET)
+    set(VCPKG_TARGET_TRIPLET "x64-windows-static-md" CACHE STRING
+        "vcpkg triplet — static lib + dynamic CRT (/MD) to match Maya")
+endif()
+
 project(GaussianSplatPlugin)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -22,6 +46,11 @@ if(NOT EXISTS "${MAYA_DEVKIT}/include/maya/MObject.h")
 endif()
 
 # ---------------------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------------------
+find_package(GLEW CONFIG REQUIRED)
+
+# ---------------------------------------------------------------------------
 # Sources
 # ---------------------------------------------------------------------------
 file(GLOB_RECURSE SOURCES "src/*.cpp")
@@ -43,6 +72,7 @@ target_link_directories(GaussianSplatPlugin PRIVATE
 )
 
 target_link_libraries(GaussianSplatPlugin PRIVATE
+    GLEW::GLEW
     OpenMaya
     OpenMayaUI
     OpenMayaRender
@@ -62,6 +92,11 @@ target_compile_definitions(GaussianSplatPlugin PRIVATE
     REQUIRE_IOSTREAM
     _USE_MATH_DEFINES
 )
+
+# GLEW_STATIC must be defined when linking against the static GLEW library.
+if(VCPKG_TARGET_TRIPLET MATCHES "static")
+    target_compile_definitions(GaussianSplatPlugin PRIVATE GLEW_STATIC)
+endif()
 
 # ---------------------------------------------------------------------------
 # Post-build: copy shaders alongside the .mll

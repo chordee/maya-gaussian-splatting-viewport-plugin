@@ -1,0 +1,7 @@
+{
+  "name": "maya-gaussian-splatting-viewport-plugin",
+  "version": "0.1.0",
+  "dependencies": [
+    "glew"
+  ]
+}
