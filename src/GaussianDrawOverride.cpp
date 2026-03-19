@@ -55,7 +55,7 @@ MUserData* GaussianDrawOverride::prepareForDraw(
 
     data->splatScale = fn.findPlug(GaussianNode::aSplatScale, false).asFloat();
     data->opacityMult = fn.findPlug(GaussianNode::aOpacityMult, false).asFloat();
-    data->shDegree = 1;
+    data->shDegree = gNode->splatData.shDegree;
 
     return data;
 }
