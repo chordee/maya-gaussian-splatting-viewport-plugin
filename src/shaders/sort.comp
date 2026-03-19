@@ -1,0 +1,33 @@
+#version 450
+
+layout(local_size_x = 256) in;
+
+layout(std430, binding = 4) buffer KeyBuffer { float depths[]; };
+layout(std430, binding = 5) buffer IndexBuffer { uint indices[]; };
+
+uniform uint u_p; // Step size
+uniform uint u_q; // Sub-step size
+uniform uint u_numSplats;
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+    uint j = i ^ u_q; // Bitonic partner (stride = u_q)
+
+    // Implementation of a single bitonic merge step
+    // For large N, this is called iteratively from C++
+    if (j > i && i < u_numSplats && j < u_numSplats) {
+        float d1 = depths[i];
+        float d2 = depths[j];
+        uint idx1 = indices[i];
+        uint idx2 = indices[j];
+
+        bool dist = (i & u_p) == 0;
+        if ((d1 > d2) == dist) {
+            // Swap
+            depths[i] = d2;
+            depths[j] = d1;
+            indices[i] = idx2;
+            indices[j] = idx1;
+        }
+    }
+}
