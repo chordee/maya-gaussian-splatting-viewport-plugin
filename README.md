@@ -3,8 +3,6 @@
 A C++ Maya plugin for real-time 3D Gaussian Splatting (`.ply`) rendering
 in Autodesk Maya 2024 Viewport 2.0.
 
-![Screenshot](screenshot/Annotation%202026-03-20%20020134.jpg)
-
 ## Features
 
 - Load standard 3DGS `.ply` files (position, rotation, scale, opacity, SH DC)
