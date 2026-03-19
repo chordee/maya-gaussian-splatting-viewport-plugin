@@ -44,7 +44,12 @@ Output is placed in `build/Release/`:
 
 1. Copy `build/Release/GaussianSplatPlugin.mll` and `build/Release/shaders/`
    to your Maya plug-ins directory, or load directly from `build/Release/`.
-2. In Maya: **Windows → Settings/Preferences → Plug-in Manager**
+2. **Set Viewport 2.0 to OpenGL Core Profile** — this plugin uses OpenGL and will
+   not render under DirectX 11 (Maya's default on Windows):
+   **Windows → Settings/Preferences → Preferences → Display → Viewport 2.0**
+   → set *Rendering engine* to **OpenGL Core Profile (Compatibility)**.
+   Restart Maya after changing this setting.
+3. In Maya: **Windows → Settings/Preferences → Plug-in Manager**
    → load `GaussianSplatPlugin.mll`.
 
 ## Usage
