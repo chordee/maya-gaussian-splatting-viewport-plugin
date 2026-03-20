@@ -112,6 +112,8 @@ void main() {
                               vec2(-1,-1), vec2(1,1),  vec2(-1,1));
     vec2 quad = corners[vertIdx];
 
+    // 3.0σ covers 99.7% of the Gaussian mass (3-sigma ellipse).
+    // max(0.1, ...) prevents a degenerate zero-size splat from collapsing to a point.
     float r1 = 3.0 * u_splatScale * sqrt(max(0.1, lambda1));
     float r2 = 3.0 * u_splatScale * sqrt(max(0.1, lambda2));
     vec2 offsetPixels = quad.x * r1 * v1 + quad.y * r2 * v2;

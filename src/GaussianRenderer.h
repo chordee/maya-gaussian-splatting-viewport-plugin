@@ -21,11 +21,12 @@ public:
         newDataAvailable_ = true;
     }
 
-    void sort(const MMatrix& viewMatrix);   
+    void sort(const MMatrix& viewMatrix);
     void draw(const MHWRender::MDrawContext& ctx,
-              float splatScale,
-              float opacityMult,
-              int   shDegree);
+              float        splatScale,
+              float        opacityMult,
+              int          shDegree,
+              const float  camPos[3]);
 
     bool isReady() const { return vao_ != 0 && splatCount_ > 0; }
     int  splatCount() const { return splatCount_; }
@@ -51,7 +52,18 @@ private:
     GLuint drawProgram_  = 0;
     GLuint sortProgram_  = 0;
     GLuint depthProgram_ = 0;
-    GLuint quadVBO_      = 0;
+
+    // Cached uniform locations — populated once after shader link (M1).
+    struct {
+        GLint wvm = -1, pm = -1, splatScale = -1, opacityMult = -1;
+        GLint viewport = -1, shDegree = -1, camPos = -1;
+    } drawUniforms_;
+    struct {
+        GLint wvm = -1, numSplats = -1;
+    } depthUniforms_;
+    struct {
+        GLint numSplats = -1, p = -1, q = -1;
+    } sortUniforms_;
 
     int      splatCount_ = 0;
     uint32_t sortN_      = 0;

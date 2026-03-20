@@ -120,9 +120,8 @@ void GaussianRenderer::sort(const MMatrix& wvm) {
 
     // 1. Calculate Depths
     glUseProgram(depthProgram_);
-    glUniformMatrix4fv(glGetUniformLocation(depthProgram_, "u_wvm"), 1, GL_FALSE, f_wvm);
-
-    glUniform1ui(glGetUniformLocation(depthProgram_, "u_numSplats"), splatCount_);
+    glUniformMatrix4fv(depthUniforms_.wvm,       1, GL_FALSE, f_wvm);
+    glUniform1ui(      depthUniforms_.numSplats,  splatCount_);
 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, posBuf_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, keyBuf_);
@@ -138,21 +137,21 @@ void GaussianRenderer::sort(const MMatrix& wvm) {
     glUseProgram(sortProgram_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, keyBuf_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, indexBuf_);
-    glUniform1ui(glGetUniformLocation(sortProgram_, "u_numSplats"), sortN_);
+    glUniform1ui(sortUniforms_.numSplats, sortN_);
 
     uint32_t sortGroups = (sortN_ + 255) / 256;
 
     for (uint32_t p = 1; p < sortN_; p <<= 1) {
         for (uint32_t q = p; q >= 1; q >>= 1) {
-            glUniform1ui(glGetUniformLocation(sortProgram_, "u_p"), p);
-            glUniform1ui(glGetUniformLocation(sortProgram_, "u_q"), q);
+            glUniform1ui(sortUniforms_.p, p);
+            glUniform1ui(sortUniforms_.q, q);
             glDispatchCompute(sortGroups, 1, 1);
             glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
         }
     }
 }
 
-void GaussianRenderer::draw(const MHWRender::MDrawContext& ctx, float splatScale, float opacityMult, int shDegree) {
+void GaussianRenderer::draw(const MHWRender::MDrawContext& ctx, float splatScale, float opacityMult, int shDegree, const float camPos[3]) {
     static std::once_flag glewOnce;
     std::call_once(glewOnce, []() {
         glewExperimental = GL_TRUE;
@@ -197,17 +196,13 @@ void GaussianRenderer::draw(const MHWRender::MDrawContext& ctx, float splatScale
     // GL_FALSE: treat f_wvm as column-major. Since f_wvm is stored row-major (Maya convention),
     // GLSL receives the transpose of Maya's matrix, which is exactly what OpenGL column-vector
     // math needs: GLSL_mat = Maya_mat^T, so (GLSL_mat * col_vec) == (row_vec * Maya_mat).
-    glUniformMatrix4fv(glGetUniformLocation(drawProgram_, "u_wvm"), 1, GL_FALSE, f_wvm);
-    glUniformMatrix4fv(glGetUniformLocation(drawProgram_, "u_pm"),  1, GL_FALSE, f_pm);
-    glUniform1f(glGetUniformLocation(drawProgram_, "u_splatScale"), splatScale);
-    glUniform1f(glGetUniformLocation(drawProgram_, "u_opacityMult"), opacityMult);
-    glUniform4iv(glGetUniformLocation(drawProgram_, "u_viewport"), 1, viewport);
-    glUniform1i(glGetUniformLocation(drawProgram_, "u_shDegree"), hasSH1_ ? 1 : 0);
-
-    // Camera position in world space = last column of inverse(WVM).
-    MMatrix iwvm = wvm.inverse();
-    float camPos[3] = { (float)iwvm[3][0], (float)iwvm[3][1], (float)iwvm[3][2] };
-    glUniform3fv(glGetUniformLocation(drawProgram_, "u_camPos"), 1, camPos);
+    glUniformMatrix4fv(drawUniforms_.wvm,        1, GL_FALSE, f_wvm);
+    glUniformMatrix4fv(drawUniforms_.pm,          1, GL_FALSE, f_pm);
+    glUniform1f(       drawUniforms_.splatScale,  splatScale);
+    glUniform1f(       drawUniforms_.opacityMult, opacityMult);
+    glUniform4iv(      drawUniforms_.viewport,    1, viewport);
+    glUniform1i(       drawUniforms_.shDegree,    hasSH1_ ? 1 : 0);
+    glUniform3fv(      drawUniforms_.camPos,      1, camPos); // M2: precomputed in prepareForDraw
 
     glBindVertexArray(vao_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, posBuf_);
@@ -286,16 +281,46 @@ void GaussianRenderer::buildShaderProgram() {
     std::string fPath = s_shaderDir + "gaussian.frag";
     GLuint v = loadShader(GL_VERTEX_SHADER, vPath.c_str());
     GLuint f = loadShader(GL_FRAGMENT_SHADER, fPath.c_str());
-    if (v && f) drawProgram_ = linkProgram(v, f);
-    if (v) glDeleteShader(v); if (f) glDeleteShader(f);
+    if (v && f) {
+        if (drawProgram_) glDeleteProgram(drawProgram_); // H1: release old program
+        drawProgram_ = linkProgram(v, f);
+        if (drawProgram_) {
+            // M1: cache uniform locations once after linking
+            drawUniforms_.wvm        = glGetUniformLocation(drawProgram_, "u_wvm");
+            drawUniforms_.pm         = glGetUniformLocation(drawProgram_, "u_pm");
+            drawUniforms_.splatScale = glGetUniformLocation(drawProgram_, "u_splatScale");
+            drawUniforms_.opacityMult= glGetUniformLocation(drawProgram_, "u_opacityMult");
+            drawUniforms_.viewport   = glGetUniformLocation(drawProgram_, "u_viewport");
+            drawUniforms_.shDegree   = glGetUniformLocation(drawProgram_, "u_shDegree");
+            drawUniforms_.camPos     = glGetUniformLocation(drawProgram_, "u_camPos");
+        }
+    }
+    if (v) glDeleteShader(v);
+    if (f) glDeleteShader(f);
 }
 
 void GaussianRenderer::buildSortProgram() {
     std::string dPath = s_shaderDir + "depth.comp";
     std::string sPath = s_shaderDir + "sort.comp";
     GLuint d = loadShader(GL_COMPUTE_SHADER, dPath.c_str());
-    if (d) depthProgram_ = linkProgram(0, 0, d);
+    if (d) {
+        if (depthProgram_) glDeleteProgram(depthProgram_); // H1
+        depthProgram_ = linkProgram(0, 0, d);
+        if (depthProgram_) {
+            depthUniforms_.wvm      = glGetUniformLocation(depthProgram_, "u_wvm");
+            depthUniforms_.numSplats= glGetUniformLocation(depthProgram_, "u_numSplats");
+        }
+    }
     GLuint s = loadShader(GL_COMPUTE_SHADER, sPath.c_str());
-    if (s) sortProgram_ = linkProgram(0, 0, s);
-    if (d) glDeleteShader(d); if (s) glDeleteShader(s);
+    if (s) {
+        if (sortProgram_) glDeleteProgram(sortProgram_); // H1
+        sortProgram_ = linkProgram(0, 0, s);
+        if (sortProgram_) {
+            sortUniforms_.numSplats = glGetUniformLocation(sortProgram_, "u_numSplats");
+            sortUniforms_.p         = glGetUniformLocation(sortProgram_, "u_p");
+            sortUniforms_.q         = glGetUniformLocation(sortProgram_, "u_q");
+        }
+    }
+    if (d) glDeleteShader(d);
+    if (s) glDeleteShader(s);
 }
