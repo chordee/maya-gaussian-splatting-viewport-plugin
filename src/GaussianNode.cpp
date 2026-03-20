@@ -18,11 +18,8 @@ MObject GaussianNode::aFilePath;
 MObject GaussianNode::aSplatScale;
 MObject GaussianNode::aOpacityMult;
 
-void* GaussianNode::creator() { 
-    MGlobal::displayInfo("--------------------------------------------------");
-    MGlobal::displayInfo("[GaussianSplat] CRITICAL: GaussianNode::creator()");
-    MGlobal::displayInfo("--------------------------------------------------");
-    return new GaussianNode; 
+void* GaussianNode::creator() {
+    return new GaussianNode;
 }
 
 MStatus GaussianNode::initialize() {
@@ -44,9 +41,10 @@ MStatus GaussianNode::initialize() {
     nAttr.setKeyable(true);
     nAttr.setMin(0.0); nAttr.setMax(10.0);
 
-    addAttribute(aFilePath);
-    addAttribute(aSplatScale);
-    addAttribute(aOpacityMult);
+    MStatus s;
+    s = addAttribute(aFilePath);   CHECK_MSTATUS_AND_RETURN_IT(s);
+    s = addAttribute(aSplatScale);  CHECK_MSTATUS_AND_RETURN_IT(s);
+    s = addAttribute(aOpacityMult); CHECK_MSTATUS_AND_RETURN_IT(s);
 
     return MS::kSuccess;
 }
@@ -74,8 +72,9 @@ MBoundingBox GaussianNode::boundingBox() const {
         return MBoundingBox(MPoint(-10, -10, -10), MPoint(10, 10, 10));
     }
 
-    float mn[3] = { FLT_MAX,  FLT_MAX,  FLT_MAX };
-    float mx[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX };
+    constexpr float kMax = std::numeric_limits<float>::max();
+    float mn[3] = { kMax,  kMax,  kMax };
+    float mx[3] = {-kMax, -kMax, -kMax };
     
     for (int i = 0; i < splatData.splatCount; ++i) {
         float x = splatData.positions[i*4 + 0];
@@ -86,6 +85,5 @@ MBoundingBox GaussianNode::boundingBox() const {
         mn[1] = std::min(mn[1], y); mx[1] = std::max(mx[1], y);
         mn[2] = std::min(mn[2], z); mx[2] = std::max(mx[2], z);
     }
-    MGlobal::displayInfo(MString("[GaussianSplat] Bounding box calculated: ") + mn[0] + "," + mn[1] + "," + mn[2] + " to " + mx[0] + "," + mx[1] + "," + mx[2]);
     return MBoundingBox(MPoint(mn[0], mn[1], mn[2]), MPoint(mx[0], mx[1], mx[2]));
 }

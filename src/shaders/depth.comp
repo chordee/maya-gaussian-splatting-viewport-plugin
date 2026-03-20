@@ -16,8 +16,7 @@ void main() {
     // Transform to view space to get Z-depth
     vec4 viewPos = u_wvm * vec4(positions[idx].xyz, 1.0);
     
-    // We store negative Z because Maya looks down -Z
-    // This makes further objects have smaller values (more negative)
-    depths[idx] = viewPos.z; 
+    // Store view-space Z as sort key (Maya looks down -Z, so more negative = further away).
+    depths[idx] = viewPos.z;
     indices[idx] = idx;
 }
