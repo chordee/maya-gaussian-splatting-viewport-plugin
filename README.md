@@ -55,7 +55,6 @@ Output is placed in `build/Release/`:
 ## Usage
 
 ```python
-# Run scripts/create_gaussian_splat.py, or create the node manually:
 import maya.cmds as cmds
 node = cmds.createNode("gaussianSplatNode")
 cmds.setAttr(node + ".filePath", "/path/to/scene.ply", type="string")
