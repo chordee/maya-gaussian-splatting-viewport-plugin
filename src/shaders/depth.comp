@@ -17,8 +17,6 @@ void main() {
     vec4 viewPos = u_wvm * vec4(positions[idx].xyz, 1.0);
     
     // Store view-space Z as sort key (Maya looks down -Z, so more negative = further away).
-    // Add a tiny index-based offset to break ties between splats at equal depth,
-    // preventing sort-order oscillation between frames and the resulting flicker.
-    depths[idx] = viewPos.z - float(idx) * 1e-7;
+    depths[idx] = viewPos.z;
     indices[idx] = idx;
 }
