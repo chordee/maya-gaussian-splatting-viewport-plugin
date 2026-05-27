@@ -37,19 +37,23 @@ MUserData* GaussianDrawOverride::prepareForDraw(
     if (!gNode) return data;
 
     MString path = fn.findPlug(GaussianNode::aFilePath, false).asString();
+    bool reloaded = false;
     if (path != lastPath_ || gNode->dirty) {
         std::string err;
         if (gNode->splatData.load(path.asChar(), err)) {
             lastPath_ = path;
             gNode->dirty = false;
+            reloaded = true;
         } else if (path.length() > 0) {
             MGlobal::displayError(MString("[GaussianSplat] Load failed: ") + err.c_str());
         }
     }
-    
+
     data->renderer = &renderer_;
-    
-    if (gNode->splatData.splatCount != lastSplatCount_) {
+
+    // Upload on reload as well — two PLYs with the same splatCount would otherwise
+    // leave stale GPU buffers behind.
+    if (reloaded || gNode->splatData.splatCount != lastSplatCount_) {
         renderer_.setPendingData(gNode->splatData);
         lastSplatCount_ = gNode->splatData.splatCount;
     }

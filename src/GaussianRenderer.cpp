@@ -167,7 +167,12 @@ void GaussianRenderer::draw(const MHWRender::MDrawContext& ctx, float splatScale
         std::lock_guard<std::mutex> lock(dataMutex_);
         if (newDataAvailable_) {
             uploadSplats(pendingData_);
-            pendingData_.positions.clear();
+            // Release CPU-side staging copies — the GPU has them now.
+            std::vector<float>().swap(pendingData_.positions);
+            std::vector<float>().swap(pendingData_.rotations);
+            std::vector<float>().swap(pendingData_.scales);
+            std::vector<float>().swap(pendingData_.sh_dc);
+            std::vector<float>().swap(pendingData_.sh_rest);
             newDataAvailable_ = false;
         }
     }
