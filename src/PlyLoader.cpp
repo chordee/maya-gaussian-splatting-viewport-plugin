@@ -97,12 +97,17 @@ bool SplatData::load(const std::string& path, std::string& errorOut) {
             // Normalize the quaternion — some training pipelines emit slightly
             // non-unit quaternions, which the vertex shader would otherwise turn
             // into anisotropic scaling on top of the splat covariance.
+            // Guard against Inf as well: Inf passes (qlen > 1e-8) but inv=0
+            // would then turn Inf*0 into NaN and propagate into the shader.
             float qw = R_ptr[i*4 + 0];
             float qx = R_ptr[i*4 + 1];
             float qy = R_ptr[i*4 + 2];
             float qz = R_ptr[i*4 + 3];
             float qlen = std::sqrt(qw*qw + qx*qx + qy*qy + qz*qz);
-            if (qlen > 1e-8f) {
+            bool qok = std::isfinite(qw) && std::isfinite(qx) &&
+                       std::isfinite(qy) && std::isfinite(qz) &&
+                       std::isfinite(qlen) && qlen > 1e-8f;
+            if (qok) {
                 float inv = 1.0f / qlen;
                 qw *= inv; qx *= inv; qy *= inv; qz *= inv;
             } else {
