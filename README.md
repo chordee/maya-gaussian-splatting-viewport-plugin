@@ -8,11 +8,11 @@ in Autodesk Maya Viewport 2.0.
 ## Features
 
 - Load standard 3DGS `.ply` files (position, rotation, scale, opacity, SH coefficients)
-- View-dependent color via SH degree 0 and 1 (auto-detected from PLY)
+- View-dependent color via SH degrees 0–3 (auto-detected from PLY, runtime-capped via attribute)
 - EWA Splatting: full GPU projection of 3D covariance to 2D ellipses
 - GPU Bitonic Sort: depth sort skipped when camera is static (performance optimization)
 - Maya scene integration: Reversed-Z depth test compatible, non-destructive
-- Maya node attributes: `filePath`, `splatScale`, `opacityMult`
+- Maya node attributes: `filePath`, `splatScale`, `opacityMult`, `shDegree`
 
 ## Requirements
 
@@ -87,6 +87,9 @@ Adjustable attributes:
 
 - `splatScale` — global size multiplier (default `1.0`)
 - `opacityMult` — opacity multiplier (default `1.0`)
+- `shDegree`   — SH evaluation cap, `0`–`3` (default `3`). Capped at the highest
+  degree present in the loaded PLY; lower it to trade view-dependent fidelity
+  for vertex-shader cost.
 
 ## Architecture
 
@@ -105,7 +108,6 @@ third_party/tinyply     → PLY parsing library
 
 ## Known Limitations
 
-- SH degree 2 and 3 (higher-frequency view-dependent color) are not yet implemented.
 - Large scenes (3M+ splats) require ~250 GPU dispatches per frame when the camera
   moves, which may trigger TDR on lower-end GPUs.
 
