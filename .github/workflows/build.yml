@@ -1,0 +1,193 @@
+name: Build Plugin
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      maya_version:
+        description: 'Maya version to build'
+        type: choice
+        default: 'all'
+        options:
+          - 'all'
+          - '2024'
+          - '2025'
+          - '2026'
+          - '2027'
+          - 'custom'
+      devkit_url:
+        description: 'Custom DevKit URL (required when maya_version = custom)'
+        type: string
+        required: false
+        default: ''
+      cxx_standard:
+        description: 'C++ standard for custom build'
+        type: choice
+        default: '17'
+        options: ['17', '20']
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - id: set
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          REQUESTED: ${{ inputs.maya_version }}
+          CUSTOM_URL: ${{ inputs.devkit_url }}
+          CUSTOM_STD: ${{ inputs.cxx_standard }}
+        run: |
+          ALL='[
+            {"maya":"2024","cxx_standard":"17","devkit_url":"https://autodesk-adn-transfer.s3-us-west-2.amazonaws.com/ADN+Extranet/M%26E/Maya/devkit+2024/Autodesk_Maya_2024_2_Update_DEVKIT_Windows.zip"},
+            {"maya":"2025","cxx_standard":"17","devkit_url":"https://autodesk-adn-transfer.s3.us-west-2.amazonaws.com/ADN+Extranet/M%26E/Maya/devkit+2025/Autodesk_Maya_2025_3_Update_DEVKIT_Windows.zip"},
+            {"maya":"2026","cxx_standard":"17","devkit_url":"https://autodesk-adn-transfer.s3.us-west-2.amazonaws.com/ADN+Extranet/M%26E/Maya/devkit+2026/Autodesk_Maya_2026_3_Update_DEVKIT_Windows.zip"},
+            {"maya":"2027","cxx_standard":"20","devkit_url":"https://autodesk-adn-transfer.s3.us-west-2.amazonaws.com/ADN+Extranet/M%26E/Maya/devkit+2027/Autodesk_Maya_2027_1_Update_DEVKIT_Windows.zip"}
+          ]'
+
+          if [[ "$EVENT" == "workflow_dispatch" && "$REQUESTED" == "custom" ]]; then
+            if [[ -z "$CUSTOM_URL" ]]; then
+              echo "::error::custom build requires the devkit_url input"
+              exit 1
+            fi
+            FILTERED=$(jq -cn --arg url "$CUSTOM_URL" --arg std "$CUSTOM_STD" \
+              '[{maya:"custom", cxx_standard:$std, devkit_url:$url}]')
+          elif [[ "$EVENT" == "workflow_dispatch" && -n "$REQUESTED" && "$REQUESTED" != "all" ]]; then
+            FILTERED=$(echo "$ALL" | jq -c --arg v "$REQUESTED" '[.[] | select(.maya == $v)]')
+            if [[ "$FILTERED" == "[]" ]]; then
+              echo "::error::no matrix entry for maya_version=$REQUESTED"
+              exit 1
+            fi
+          else
+            FILTERED=$(echo "$ALL" | jq -c .)
+          fi
+
+          echo "matrix={\"include\":$FILTERED}" >> "$GITHUB_OUTPUT"
+          echo "Resolved matrix: $FILTERED"
+
+  build:
+    needs: prepare
+    runs-on: windows-2022
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+
+    env:
+      VCPKG_ROOT: C:\vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\.vcpkg-bincache
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Prepare vcpkg binary cache dir
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force ${env:VCPKG_DEFAULT_BINARY_CACHE} | Out-Null
+
+      - name: Cache vcpkg binaries
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}-v1
+
+      - name: Derive DevKit cache key
+        id: devkit-key
+        shell: pwsh
+        run: |
+          $bytes = [System.Text.Encoding]::UTF8.GetBytes("${{ matrix.devkit_url }}")
+          $sha = [System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes)
+          $hex = ([System.BitConverter]::ToString($sha) -replace '-','').ToLower().Substring(0, 16)
+          "key=maya-devkit-${{ matrix.maya }}-$hex" >> $env:GITHUB_OUTPUT
+
+      - name: Cache Maya DevKit
+        id: cache-devkit
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: devkit/${{ matrix.maya }}
+          key: ${{ steps.devkit-key.outputs.key }}
+
+      - name: Download Maya DevKit
+        if: steps.cache-devkit.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force devkit/${{ matrix.maya }} | Out-Null
+          Invoke-WebRequest -Uri "${{ matrix.devkit_url }}" -OutFile devkit.zip
+          & 7z x devkit.zip "-odevkit/${{ matrix.maya }}" -y | Out-Null
+          Remove-Item devkit.zip
+
+      - name: Locate DevKit root
+        id: devkit
+        shell: pwsh
+        run: |
+          $marker = Get-ChildItem -Path "devkit/${{ matrix.maya }}" -Recurse -Filter "MObject.h" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Directory.Name -eq "maya" } |
+            Select-Object -First 1
+          if (-not $marker) { throw "DevKit MObject.h not found under devkit/${{ matrix.maya }}" }
+          $devkitRoot = $marker.Directory.Parent.Parent.FullName
+          "path=$devkitRoot" >> $env:GITHUB_OUTPUT
+          Write-Host "DevKit root: $devkitRoot"
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -B build `
+            -DMAYA_DEVKIT="${{ steps.devkit.outputs.path }}" `
+            -DCMAKE_CXX_STANDARD=${{ matrix.cxx_standard }} `
+            -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET="x64-windows-static-md"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          $stage = "stage/GaussianSplatPlugin-maya${{ matrix.maya }}"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item build/Release/GaussianSplatPlugin.mll $stage/
+          Copy-Item -Recurse build/Release/shaders $stage/
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: GaussianSplatPlugin-maya${{ matrix.maya }}
+          path: stage/GaussianSplatPlugin-maya${{ matrix.maya }}/
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: artifacts
+
+      - name: Bundle per-Maya zips
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          mkdir -p release
+          for dir in artifacts/GaussianSplatPlugin-maya*/; do
+            name=$(basename "$dir")
+            (cd "$dir" && zip -r "../../release/${name}-${TAG}.zip" .)
+          done
+          ls -la release/
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release create "$TAG" release/*.zip \
+            --title "$TAG" \
+            --generate-notes \
+            --repo "$GITHUB_REPOSITORY"
