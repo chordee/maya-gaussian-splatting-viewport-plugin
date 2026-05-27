@@ -49,6 +49,16 @@ bool SplatData::load(const std::string& path, std::string& errorOut) {
             return false;
         }
 
+        // Defensive: tinyply silently leaves buffers empty when read() can't
+        // populate them (truncated file, format mismatch). Dereferencing a
+        // null buffer would crash Maya without warning.
+        if (!ply_pos->buffer.get() || !ply_rot->buffer.get() ||
+            !ply_scale->buffer.get() || !ply_opac->buffer.get() ||
+            !ply_sh_dc->buffer.get()) {
+            errorOut = "PLY element buffers are empty (truncated or malformed file?).";
+            return false;
+        }
+
         const size_t N = ply_pos->count;
         splatCount = static_cast<int>(N);
 
@@ -84,10 +94,24 @@ bool SplatData::load(const std::string& path, std::string& errorOut) {
             positions[i*4 + 2] = P_ptr[i*3 + 2];
             positions[i*4 + 3] = 1.0f;
 
-            rotations[i*4 + 0] = R_ptr[i*4 + 0];
-            rotations[i*4 + 1] = R_ptr[i*4 + 1];
-            rotations[i*4 + 2] = R_ptr[i*4 + 2];
-            rotations[i*4 + 3] = R_ptr[i*4 + 3];
+            // Normalize the quaternion — some training pipelines emit slightly
+            // non-unit quaternions, which the vertex shader would otherwise turn
+            // into anisotropic scaling on top of the splat covariance.
+            float qw = R_ptr[i*4 + 0];
+            float qx = R_ptr[i*4 + 1];
+            float qy = R_ptr[i*4 + 2];
+            float qz = R_ptr[i*4 + 3];
+            float qlen = std::sqrt(qw*qw + qx*qx + qy*qy + qz*qz);
+            if (qlen > 1e-8f) {
+                float inv = 1.0f / qlen;
+                qw *= inv; qx *= inv; qy *= inv; qz *= inv;
+            } else {
+                qw = 1.0f; qx = qy = qz = 0.0f;
+            }
+            rotations[i*4 + 0] = qw;
+            rotations[i*4 + 1] = qx;
+            rotations[i*4 + 2] = qy;
+            rotations[i*4 + 3] = qz;
 
             scales[i*4 + 0] = std::exp(S_ptr[i*3 + 0]);
             scales[i*4 + 1] = std::exp(S_ptr[i*3 + 1]);
