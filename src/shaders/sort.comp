@@ -21,7 +21,7 @@ void main() {
         uint idx1 = indices[i];
         uint idx2 = indices[j];
 
-        bool dist = (i & u_p) == 0;
+        bool dist = (i & (u_p * 2)) == 0;
         if ((d1 > d2) == dist) {
             // Swap
             depths[i] = d2;
