@@ -14,6 +14,7 @@ public:
     static MObject  aFilePath;
     static MObject  aSplatScale;
     static MObject  aOpacityMult;
+    static MObject  aShDegree;
 
     SplatData       splatData;
     bool            dirty = true;

@@ -26,7 +26,7 @@ void GaussianRenderer::initGL() {
     glGenBuffers(1, &rotBuf_);
     glGenBuffers(1, &sclBuf_);
     glGenBuffers(1, &shBuf_);
-    glGenBuffers(1, &sh1Buf_);
+    glGenBuffers(1, &shRestBuf_);
     glGenBuffers(1, &indexBuf_);
     glGenBuffers(1, &keyBuf_);
 
@@ -41,7 +41,7 @@ void GaussianRenderer::destroyGL() {
     if (rotBuf_) glDeleteBuffers(1, &rotBuf_);
     if (sclBuf_) glDeleteBuffers(1, &sclBuf_);
     if (shBuf_) glDeleteBuffers(1, &shBuf_);
-    if (sh1Buf_) glDeleteBuffers(1, &sh1Buf_);
+    if (shRestBuf_) glDeleteBuffers(1, &shRestBuf_);
     if (indexBuf_) glDeleteBuffers(1, &indexBuf_);
     if (keyBuf_) glDeleteBuffers(1, &keyBuf_);
     if (drawProgram_) glDeleteProgram(drawProgram_);
@@ -52,9 +52,10 @@ void GaussianRenderer::destroyGL() {
 
 void GaussianRenderer::uploadSplats(const SplatData& data) {
     initGL();
-    splatCount_ = data.splatCount;
-    hasSH1_     = data.shDegree >= 1 && !data.sh_rest1.empty();
-    sortDirty_  = true; // force re-sort after new data
+    splatCount_         = data.splatCount;
+    loadedShDegree_     = (data.shDegree >= 1 && !data.sh_rest.empty()) ? data.shDegree : 0;
+    restFloatsPerSplat_ = (loadedShDegree_ >= 1) ? data.restFloatsPerSplat : 0;
+    sortDirty_          = true; // force re-sort after new data
     if (splatCount_ == 0) return;
 
     // Compute next power-of-2 for bitonic sort — the sort must operate on n entries
@@ -74,12 +75,12 @@ void GaussianRenderer::uploadSplats(const SplatData& data) {
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, shBuf_);
     glBufferData(GL_SHADER_STORAGE_BUFFER, data.sh_dc.size() * sizeof(float), data.sh_dc.data(), GL_STATIC_DRAW);
 
-    // SH degree-1 buffer (binding 6): 9 floats per splat.
-    // Upload a single zero float when SH1 is absent so the buffer object is valid.
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, sh1Buf_);
-    if (hasSH1_) {
-        glBufferData(GL_SHADER_STORAGE_BUFFER, data.sh_rest1.size() * sizeof(float),
-                     data.sh_rest1.data(), GL_STATIC_DRAW);
+    // SH rest buffer (binding 6): restFloatsPerSplat_ floats per splat (9/24/45).
+    // Upload a single zero float when SH rest is absent so the buffer object is valid.
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, shRestBuf_);
+    if (loadedShDegree_ >= 1) {
+        glBufferData(GL_SHADER_STORAGE_BUFFER, data.sh_rest.size() * sizeof(float),
+                     data.sh_rest.data(), GL_STATIC_DRAW);
     } else {
         float zero = 0.0f;
         glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(float), &zero, GL_STATIC_DRAW);
@@ -201,8 +202,12 @@ void GaussianRenderer::draw(const MHWRender::MDrawContext& ctx, float splatScale
     glUniform1f(       drawUniforms_.splatScale,  splatScale);
     glUniform1f(       drawUniforms_.opacityMult, opacityMult);
     glUniform4iv(      drawUniforms_.viewport,    1, viewport);
-    glUniform1i(       drawUniforms_.shDegree,    hasSH1_ ? 1 : 0);
-    glUniform3fv(      drawUniforms_.camPos,      1, camPos); // M2: precomputed in prepareForDraw
+    // Cap requested degree by what's actually loaded on the GPU.
+    int effectiveDegree = std::min(shDegree, loadedShDegree_);
+    if (effectiveDegree < 0) effectiveDegree = 0;
+    glUniform1i(       drawUniforms_.shDegree,           effectiveDegree);
+    glUniform1i(       drawUniforms_.restFloatsPerSplat, restFloatsPerSplat_);
+    glUniform3fv(      drawUniforms_.camPos,             1, camPos); // M2: precomputed in prepareForDraw
 
     glBindVertexArray(vao_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, posBuf_);
@@ -210,7 +215,7 @@ void GaussianRenderer::draw(const MHWRender::MDrawContext& ctx, float splatScale
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, sclBuf_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, shBuf_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, indexBuf_);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, sh1Buf_);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, shRestBuf_);
 
     glDrawArraysInstanced(GL_TRIANGLES, 0, 6, splatCount_);
 
@@ -290,9 +295,10 @@ void GaussianRenderer::buildShaderProgram() {
             drawUniforms_.pm         = glGetUniformLocation(drawProgram_, "u_pm");
             drawUniforms_.splatScale = glGetUniformLocation(drawProgram_, "u_splatScale");
             drawUniforms_.opacityMult= glGetUniformLocation(drawProgram_, "u_opacityMult");
-            drawUniforms_.viewport   = glGetUniformLocation(drawProgram_, "u_viewport");
-            drawUniforms_.shDegree   = glGetUniformLocation(drawProgram_, "u_shDegree");
-            drawUniforms_.camPos     = glGetUniformLocation(drawProgram_, "u_camPos");
+            drawUniforms_.viewport           = glGetUniformLocation(drawProgram_, "u_viewport");
+            drawUniforms_.shDegree           = glGetUniformLocation(drawProgram_, "u_shDegree");
+            drawUniforms_.restFloatsPerSplat = glGetUniformLocation(drawProgram_, "u_restFloatsPerSplat");
+            drawUniforms_.camPos             = glGetUniformLocation(drawProgram_, "u_camPos");
         }
     }
     if (v) glDeleteShader(v);

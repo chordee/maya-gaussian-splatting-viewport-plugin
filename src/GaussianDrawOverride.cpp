@@ -6,6 +6,7 @@
 #include <maya/MGlobal.h>
 #include <maya/MMatrix.h>
 #include <maya/MPoint.h>
+#include <algorithm>
 
 MHWRender::MPxDrawOverride* GaussianDrawOverride::creator(const MObject& obj) {
     MGlobal::displayInfo("[GaussianSplat] GaussianDrawOverride::creator called.");
@@ -55,7 +56,8 @@ MUserData* GaussianDrawOverride::prepareForDraw(
 
     data->splatScale  = fn.findPlug(GaussianNode::aSplatScale,  false).asFloat();
     data->opacityMult = fn.findPlug(GaussianNode::aOpacityMult, false).asFloat();
-    data->shDegree    = gNode->splatData.shDegree;
+    int requestedDeg  = fn.findPlug(GaussianNode::aShDegree,    false).asInt();
+    data->shDegree    = std::min(requestedDeg, gNode->splatData.shDegree);
 
     // M2: compute camera world position here (one inverse per frame, not per draw call).
     MMatrix wvm  = ctx.getMatrix(MHWRender::MFrameContext::kWorldViewMtx);

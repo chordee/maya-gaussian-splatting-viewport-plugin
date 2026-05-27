@@ -1,30 +1,45 @@
 #version 450
 
-layout(std430, binding = 0) readonly buffer PosBuffer   { vec4 positions[]; };
-layout(std430, binding = 1) readonly buffer RotBuffer   { vec4 rotations[]; };
-layout(std430, binding = 2) readonly buffer SclBuffer   { vec4 scales[];    };
-layout(std430, binding = 3) readonly buffer SHBuffer    { vec4 sh_dc[];     };
-layout(std430, binding = 5) readonly buffer IndexBuffer { uint indices[];   };
-// SH degree-1: 9 floats per splat packed as float array.
-// Layout per splat (base = splatIdx * 9):
-//   [0..2] = Y_{1,-1} RGB,  [3..5] = Y_{1,0} RGB,  [6..8] = Y_{1,1} RGB
-layout(std430, binding = 6) readonly buffer SH1Buffer   { float sh_rest1[]; };
+layout(std430, binding = 0) readonly buffer PosBuffer    { vec4 positions[]; };
+layout(std430, binding = 1) readonly buffer RotBuffer    { vec4 rotations[]; };
+layout(std430, binding = 2) readonly buffer SclBuffer    { vec4 scales[];    };
+layout(std430, binding = 3) readonly buffer SHBuffer     { vec4 sh_dc[];     };
+layout(std430, binding = 5) readonly buffer IndexBuffer  { uint indices[];   };
+// SH rest coefficients (degrees 1..3) packed per splat:
+//   stride = u_restFloatsPerSplat = 9 (deg1) | 24 (deg2) | 45 (deg3)
+//   layout per splat: [Y_{1,-1}.rgb, Y_{1,0}.rgb, Y_{1,1}.rgb,
+//                      Y_{2,-2..2}.rgb,
+//                      Y_{3,-3..3}.rgb]
+layout(std430, binding = 6) readonly buffer SHRestBuffer { float sh_rest[];  };
 
 uniform mat4  u_wvm;
 uniform mat4  u_pm;
 uniform float u_splatScale;
 uniform float u_opacityMult;
 uniform ivec4 u_viewport;
-uniform int   u_shDegree;   // 0 = DC only, 1 = degree-1 view-dependent
-uniform vec3  u_camPos;     // camera position in world space
+uniform int   u_shDegree;            // 0 = DC only, up to 3 = full view-dependent
+uniform int   u_restFloatsPerSplat;  // stride into sh_rest (9, 24, or 45)
+uniform vec3  u_camPos;              // camera position in world space
 
 out vec2  v_uv;
 out vec4  v_color;
 out float v_opacity;
 
-// SH basis constants
+// SH basis constants (Condon-Shortley convention, matches INRIA 3DGS)
 const float C0 = 0.28209479177387814;
 const float C1 = 0.4886025119029199;
+const float C2_0 =  1.0925484305920792;
+const float C2_1 = -1.0925484305920792;
+const float C2_2 =  0.31539156525252005;
+const float C2_3 = -1.0925484305920792;
+const float C2_4 =  0.5462742152960396;
+const float C3_0 = -0.5900435899266435;
+const float C3_1 =  2.890611442640554;
+const float C3_2 = -0.4570457994644658;
+const float C3_3 =  0.3731763325901154;
+const float C3_4 = -0.4570457994644658;
+const float C3_5 =  1.445305721320277;
+const float C3_6 = -0.5900435899266435;
 
 mat3 quatToMat(vec4 q) {
     float w=q.x, x=q.y, y=q.z, z=q.w;
@@ -57,19 +72,53 @@ void main() {
     vec3 color = C0 * dc;
 
     if (u_shDegree >= 1) {
-        // View direction in world space (from splat to camera)
+        // View direction in world space (splat → camera)
         vec3 dir = normalize(u_camPos - pos);
         float dx = dir.x, dy = dir.y, dz = dir.z;
+        uint base = splatIdx * uint(u_restFloatsPerSplat);
 
-        uint base = splatIdx * 9u;
-        vec3 sh1_0 = vec3(sh_rest1[base+0], sh_rest1[base+1], sh_rest1[base+2]); // Y_{1,-1}
-        vec3 sh1_1 = vec3(sh_rest1[base+3], sh_rest1[base+4], sh_rest1[base+5]); // Y_{1,0}
-        vec3 sh1_2 = vec3(sh_rest1[base+6], sh_rest1[base+7], sh_rest1[base+8]); // Y_{1,1}
+        vec3 sh1_0 = vec3(sh_rest[base+0], sh_rest[base+1], sh_rest[base+2]); // Y_{1,-1}
+        vec3 sh1_1 = vec3(sh_rest[base+3], sh_rest[base+4], sh_rest[base+5]); // Y_{1, 0}
+        vec3 sh1_2 = vec3(sh_rest[base+6], sh_rest[base+7], sh_rest[base+8]); // Y_{1, 1}
 
-        // Real SH degree-1 basis: Y_{1,-1} = -C1*y, Y_{1,0} = C1*z, Y_{1,1} = -C1*x
         color += (-C1 * dy) * sh1_0
                + ( C1 * dz) * sh1_1
                + (-C1 * dx) * sh1_2;
+
+        if (u_shDegree >= 2) {
+            float xx = dx*dx, yy = dy*dy, zz = dz*dz;
+            float xy = dx*dy, yz = dy*dz, xz = dx*dz;
+
+            vec3 sh2_0 = vec3(sh_rest[base+9],  sh_rest[base+10], sh_rest[base+11]); // Y_{2,-2}
+            vec3 sh2_1 = vec3(sh_rest[base+12], sh_rest[base+13], sh_rest[base+14]); // Y_{2,-1}
+            vec3 sh2_2 = vec3(sh_rest[base+15], sh_rest[base+16], sh_rest[base+17]); // Y_{2, 0}
+            vec3 sh2_3 = vec3(sh_rest[base+18], sh_rest[base+19], sh_rest[base+20]); // Y_{2, 1}
+            vec3 sh2_4 = vec3(sh_rest[base+21], sh_rest[base+22], sh_rest[base+23]); // Y_{2, 2}
+
+            color += C2_0 * xy                  * sh2_0
+                   + C2_1 * yz                  * sh2_1
+                   + C2_2 * (2.0*zz - xx - yy)  * sh2_2
+                   + C2_3 * xz                  * sh2_3
+                   + C2_4 * (xx - yy)           * sh2_4;
+
+            if (u_shDegree >= 3) {
+                vec3 sh3_0 = vec3(sh_rest[base+24], sh_rest[base+25], sh_rest[base+26]); // Y_{3,-3}
+                vec3 sh3_1 = vec3(sh_rest[base+27], sh_rest[base+28], sh_rest[base+29]); // Y_{3,-2}
+                vec3 sh3_2 = vec3(sh_rest[base+30], sh_rest[base+31], sh_rest[base+32]); // Y_{3,-1}
+                vec3 sh3_3 = vec3(sh_rest[base+33], sh_rest[base+34], sh_rest[base+35]); // Y_{3, 0}
+                vec3 sh3_4 = vec3(sh_rest[base+36], sh_rest[base+37], sh_rest[base+38]); // Y_{3, 1}
+                vec3 sh3_5 = vec3(sh_rest[base+39], sh_rest[base+40], sh_rest[base+41]); // Y_{3, 2}
+                vec3 sh3_6 = vec3(sh_rest[base+42], sh_rest[base+43], sh_rest[base+44]); // Y_{3, 3}
+
+                color += C3_0 * dy * (3.0*xx - yy)            * sh3_0
+                       + C3_1 * xy * dz                       * sh3_1
+                       + C3_2 * dy * (4.0*zz - xx - yy)       * sh3_2
+                       + C3_3 * dz * (2.0*zz - 3.0*xx - 3.0*yy) * sh3_3
+                       + C3_4 * dx * (4.0*zz - xx - yy)       * sh3_4
+                       + C3_5 * dz * (xx - yy)                * sh3_5
+                       + C3_6 * dx * (xx - 3.0*yy)            * sh3_6;
+            }
+        }
     }
 
     color = clamp(color + 0.5, 0.0, 1.0);

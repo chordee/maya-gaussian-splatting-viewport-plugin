@@ -28,6 +28,8 @@ public:
               int          shDegree,
               const float  camPos[3]);
 
+    int loadedShDegree() const { return loadedShDegree_; }
+
     bool isReady() const { return vao_ != 0 && splatCount_ > 0; }
     int  splatCount() const { return splatCount_; }
 
@@ -46,7 +48,7 @@ private:
     GLuint rotBuf_       = 0;
     GLuint sclBuf_       = 0;
     GLuint shBuf_        = 0;
-    GLuint sh1Buf_       = 0; // SH degree-1 coefficients (binding 6)
+    GLuint shRestBuf_    = 0; // SH degree-1..3 coefficients (binding 6)
     GLuint indexBuf_     = 0; // Sorted indices
     GLuint keyBuf_       = 0; // Depths for sorting
     GLuint drawProgram_  = 0;
@@ -56,7 +58,7 @@ private:
     // Cached uniform locations — populated once after shader link (M1).
     struct {
         GLint wvm = -1, pm = -1, splatScale = -1, opacityMult = -1;
-        GLint viewport = -1, shDegree = -1, camPos = -1;
+        GLint viewport = -1, shDegree = -1, restFloatsPerSplat = -1, camPos = -1;
     } drawUniforms_;
     struct {
         GLint wvm = -1, numSplats = -1;
@@ -65,9 +67,10 @@ private:
         GLint numSplats = -1, p = -1, q = -1;
     } sortUniforms_;
 
-    int      splatCount_ = 0;
-    uint32_t sortN_      = 0;
-    bool     hasSH1_     = false;
+    int      splatCount_         = 0;
+    uint32_t sortN_              = 0;
+    int      loadedShDegree_     = 0; // 0..3 — highest SH degree available on GPU
+    int      restFloatsPerSplat_ = 0; // 0, 9, 24, or 45
 
     // Sort-on-move: skip dispatch when camera hasn't changed.
     float prevWVM_[16]   = {};
