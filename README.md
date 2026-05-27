@@ -1,7 +1,9 @@
 # Maya Gaussian Splatting Viewport Plugin
 
+[![Build Plugin](https://github.com/chordee/maya-gaussian-splatting-viewport-plugin/actions/workflows/build.yml/badge.svg)](https://github.com/chordee/maya-gaussian-splatting-viewport-plugin/actions/workflows/build.yml)
+
 A C++ Maya plugin for real-time 3D Gaussian Splatting (`.ply`) rendering
-in Autodesk Maya 2024 Viewport 2.0.
+in Autodesk Maya Viewport 2.0.
 
 ## Features
 
@@ -16,11 +18,27 @@ in Autodesk Maya 2024 Viewport 2.0.
 
 | Tool | Version |
 | ---- | ------- |
-| Autodesk Maya | 2024 |
-| Maya DevKit | 2024 |
-| MSVC | 2019 or 2022 |
+| Autodesk Maya | 2024, 2025, 2026, or 2027 |
+| Maya DevKit | matching the Maya version |
+| MSVC | 2022 (or 2019 for Maya 2024–2026) |
 | CMake | ≥ 3.20 |
 | vcpkg | any version |
+
+## Pre-built binaries
+
+Each tagged release on the
+[Releases page](https://github.com/chordee/maya-gaussian-splatting-viewport-plugin/releases)
+ships a per-version zip:
+
+- `GaussianSplatPlugin-maya2024-<tag>.zip`
+- `GaussianSplatPlugin-maya2025-<tag>.zip`
+- `GaussianSplatPlugin-maya2026-<tag>.zip`
+- `GaussianSplatPlugin-maya2027-<tag>.zip`
+
+Download the zip matching your Maya version, unzip, and skip to
+[Installation](#installation). Compiling from source (below) is only needed
+if you want to modify the plugin or target a Maya version that is not in
+the release matrix.
 
 ## Build
 
@@ -35,6 +53,9 @@ cmake -B build ^
 cmake --build build --config Release
 ```
 
+For Maya 2027, append `-DCMAKE_CXX_STANDARD=20` to the `cmake -B build`
+line — Maya 2027's DevKit requires C++20. Maya 2024–2026 default to C++17.
+
 Output is placed in `build/Release/`:
 
 - `GaussianSplatPlugin.mll`
@@ -42,8 +63,10 @@ Output is placed in `build/Release/`:
 
 ## Installation
 
-1. Copy `build/Release/GaussianSplatPlugin.mll` and `build/Release/shaders/`
-   to your Maya plug-ins directory, or load directly from `build/Release/`.
+1. Copy `GaussianSplatPlugin.mll` and `shaders/` to your Maya plug-ins
+   directory (or load directly from where they sit). The `.mll` is built
+   against a specific Maya version's DevKit and is **not interchangeable**
+   across Maya versions — use the zip or source build matching your Maya.
 2. **Set Viewport 2.0 to OpenGL Core Profile** — this plugin uses OpenGL and will
    not render under DirectX 11 (Maya's default on Windows):
    **Windows → Settings/Preferences → Preferences → Display → Viewport 2.0**
