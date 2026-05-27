@@ -25,7 +25,12 @@ endif()
 
 project(GaussianSplatPlugin)
 
-set(CMAKE_CXX_STANDARD 17)
+# C++ standard — Maya 2024 ships C++17, Maya 2027 requires C++20.
+# Override from command line: -DCMAKE_CXX_STANDARD=20
+if(NOT DEFINED CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 17)
+endif()
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ---------------------------------------------------------------------------
 # Maya DevKit — required, must be set explicitly.

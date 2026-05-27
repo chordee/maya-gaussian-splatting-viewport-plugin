@@ -1,0 +1,95 @@
+name: Build Plugin
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - maya: '2024'
+            cxx_standard: '17'
+            devkit_url: 'https://autodesk-adn-transfer.s3-us-west-2.amazonaws.com/ADN+Extranet/M%26E/Maya/devkit+2024/Autodesk_Maya_2024_2_Update_DEVKIT_Windows.zip'
+          - maya: '2027'
+            cxx_standard: '20'
+            devkit_url: 'https://autodesk-adn-transfer.s3.us-west-2.amazonaws.com/ADN+Extranet/M%26E/Maya/devkit+2027/Autodesk_Maya_2027_1_Update_DEVKIT_Windows.zip'
+
+    env:
+      VCPKG_ROOT: C:\vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\.vcpkg-bincache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare vcpkg binary cache dir
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force ${env:VCPKG_DEFAULT_BINARY_CACHE} | Out-Null
+
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}-v1
+
+      - name: Cache Maya DevKit
+        id: cache-devkit
+        uses: actions/cache@v4
+        with:
+          path: devkit/${{ matrix.maya }}
+          key: maya-devkit-${{ matrix.maya }}-v1
+
+      - name: Download Maya DevKit
+        if: steps.cache-devkit.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force devkit/${{ matrix.maya }} | Out-Null
+          Invoke-WebRequest -Uri "${{ matrix.devkit_url }}" -OutFile devkit.zip
+          & 7z x devkit.zip "-odevkit/${{ matrix.maya }}" -y | Out-Null
+          Remove-Item devkit.zip
+
+      - name: Locate DevKit root
+        id: devkit
+        shell: pwsh
+        run: |
+          $marker = Get-ChildItem -Path "devkit/${{ matrix.maya }}" -Recurse -Filter "MObject.h" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Directory.Name -eq "maya" } |
+            Select-Object -First 1
+          if (-not $marker) { throw "DevKit MObject.h not found under devkit/${{ matrix.maya }}" }
+          $devkitRoot = $marker.Directory.Parent.Parent.FullName
+          "path=$devkitRoot" >> $env:GITHUB_OUTPUT
+          Write-Host "DevKit root: $devkitRoot"
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -B build `
+            -DMAYA_DEVKIT="${{ steps.devkit.outputs.path }}" `
+            -DCMAKE_CXX_STANDARD=${{ matrix.cxx_standard }} `
+            -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET="x64-windows-static-md"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          $stage = "stage/GaussianSplatPlugin-maya${{ matrix.maya }}"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item build/Release/GaussianSplatPlugin.mll $stage/
+          Copy-Item -Recurse build/Release/shaders $stage/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GaussianSplatPlugin-maya${{ matrix.maya }}
+          path: stage/GaussianSplatPlugin-maya${{ matrix.maya }}/
+          if-no-files-found: error
