@@ -56,15 +56,17 @@ bool SplatData::load(const std::string& path, std::string& errorOut) {
         rotations.assign(N * 4, 0.0f);
         scales.assign(N * 4, 0.0f);
         sh_dc.assign(N * 4, 0.0f);
-        sh_rest1.clear();
+        sh_rest.clear();
+        restFloatsPerSplat = 0;
         shDegree = 0;
 
-        // Channel stride: how many coefficients per color channel
-        // (determines where G and B degree-1 coefficients start).
+        // Channel stride: coefficients per color channel in the PLY layout.
+        // (deg 1 → 3, deg 2 → 8, deg 3 → 15)
         int chStride = (restCount == 45) ? 15 : (restCount == 24) ? 8 : (restCount == 9) ? 3 : 0;
         if (chStride >= 3 && ply_sh_rest) {
-            sh_rest1.assign(N * 9, 0.0f);
-            shDegree = 1;
+            shDegree = (chStride == 15) ? 3 : (chStride == 8) ? 2 : 1;
+            restFloatsPerSplat = chStride * 3; // 9, 24, or 45
+            sh_rest.assign(N * restFloatsPerSplat, 0.0f);
         }
 
         const float* P_ptr  = reinterpret_cast<const float*>(ply_pos->buffer.get());
@@ -98,24 +100,18 @@ bool SplatData::load(const std::string& path, std::string& errorOut) {
             sh_dc[i*4 + 3] = 1.0f;
 
             if (SR_ptr) {
-                // Each color channel occupies chStride coefficients.
-                // Degree-1 coefficients are the first 3 of each channel's block.
+                // PLY layout per splat: [R0..R(chStride-1), G0..G(chStride-1), B0..B(chStride-1)]
+                // Interleaved layout per splat: for each basis k → R,G,B triplet
                 const float* rBase = SR_ptr + i * restCount;
-                // Y_{1,-1}: RGB across channels at offset 0
-                sh_rest1[i*9 + 0] = rBase[0];
-                sh_rest1[i*9 + 1] = rBase[chStride];
-                sh_rest1[i*9 + 2] = rBase[chStride * 2];
-                // Y_{1,0}: RGB at offset 1
-                sh_rest1[i*9 + 3] = rBase[1];
-                sh_rest1[i*9 + 4] = rBase[chStride + 1];
-                sh_rest1[i*9 + 5] = rBase[chStride * 2 + 1];
-                // Y_{1,1}: RGB at offset 2
-                sh_rest1[i*9 + 6] = rBase[2];
-                sh_rest1[i*9 + 7] = rBase[chStride + 2];
-                sh_rest1[i*9 + 8] = rBase[chStride * 2 + 2];
+                float*       dst   = &sh_rest[i * restFloatsPerSplat];
+                for (int k = 0; k < chStride; ++k) {
+                    dst[k*3 + 0] = rBase[k];
+                    dst[k*3 + 1] = rBase[k + chStride];
+                    dst[k*3 + 2] = rBase[k + chStride * 2];
+                }
             }
         }
-        
+
         MGlobal::displayInfo(MString("[GaussianSplat] Loaded ") + splatCount
             + " splats, SH degree=" + shDegree);
 
