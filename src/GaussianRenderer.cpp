@@ -163,18 +163,22 @@ void GaussianRenderer::draw(const MHWRender::MDrawContext& ctx, float splatScale
             MGlobal::displayInfo("[GaussianSplat] GLEW initialized.");
     });
 
+    // Swap-and-release: move pendingData_ out under the lock (microseconds),
+    // then upload outside the critical section so setPendingData() never blocks
+    // on a multi-hundred-ms glBufferData transfer.
+    SplatData uploadData;
+    bool shouldUpload = false;
     {
         std::lock_guard<std::mutex> lock(dataMutex_);
         if (newDataAvailable_) {
-            uploadSplats(pendingData_);
-            // Release CPU-side staging copies — the GPU has them now.
-            std::vector<float>().swap(pendingData_.positions);
-            std::vector<float>().swap(pendingData_.rotations);
-            std::vector<float>().swap(pendingData_.scales);
-            std::vector<float>().swap(pendingData_.sh_dc);
-            std::vector<float>().swap(pendingData_.sh_rest);
+            uploadData = std::move(pendingData_);
+            pendingData_ = SplatData();
             newDataAvailable_ = false;
+            shouldUpload = true;
         }
+    }
+    if (shouldUpload) {
+        uploadSplats(uploadData);
     }
 
     if (!isReady()) return;
