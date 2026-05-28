@@ -63,6 +63,7 @@ MUserData* GaussianDrawOverride::prepareForDraw(
     int requestedDeg   = fn.findPlug(GaussianNode::aShDegree,     false).asInt();
     data->shDegree     = std::min(requestedDeg, gNode->splatData.shDegree);
     data->sRGBToLinear = fn.findPlug(GaussianNode::aSRGBToLinear, false).asBool();
+    data->gamma        = fn.findPlug(GaussianNode::aGamma,        false).asFloat();
 
     // M2: compute camera world position here (one inverse per frame, not per draw call).
     MMatrix wvm  = ctx.getMatrix(MHWRender::MFrameContext::kWorldViewMtx);
@@ -102,7 +103,8 @@ void GaussianDrawOverride::draw(const MHWRender::MDrawContext& ctx, const MUserD
         gData->opacityMult,
         gData->shDegree,
         gData->camPos,
-        gData->sRGBToLinear
+        gData->sRGBToLinear,
+        gData->gamma
     );
 
     if (!blendEnabled) glDisable(GL_BLEND);
