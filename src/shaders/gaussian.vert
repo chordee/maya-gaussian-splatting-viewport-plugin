@@ -19,6 +19,7 @@ uniform float u_opacityMult;
 uniform ivec4 u_viewport;
 uniform int   u_shDegree;            // 0 = DC only, up to 3 = full view-dependent
 uniform int   u_restFloatsPerSplat;  // stride into sh_rest (9, 24, or 45)
+uniform int   u_sRGBToLinear;        // non-zero → apply pow(color, 2.2) after clamp
 uniform vec3  u_camPos;              // camera position in world space
 
 out vec2  v_uv;
@@ -122,6 +123,13 @@ void main() {
     }
 
     color = clamp(color + 0.5, 0.0, 1.0);
+
+    // Optional sRGB → linear conversion (approximate, gamma 2.2). Useful when
+    // the framebuffer expects linear and the trained SH coefficients carry
+    // sRGB-encoded color, which would otherwise blend "too bright".
+    if (u_sRGBToLinear != 0) {
+        color = pow(color, vec3(2.2));
+    }
 
     // 3. Covariance Projection (EWA splatting)
     mat3 R = quatToMat(rot);

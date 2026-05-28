@@ -18,6 +18,7 @@ MObject GaussianNode::aFilePath;
 MObject GaussianNode::aSplatScale;
 MObject GaussianNode::aOpacityMult;
 MObject GaussianNode::aShDegree;
+MObject GaussianNode::aSRGBToLinear;
 
 void* GaussianNode::creator() {
     return new GaussianNode;
@@ -46,11 +47,15 @@ MStatus GaussianNode::initialize() {
     nAttr.setKeyable(true);
     nAttr.setMin(0); nAttr.setMax(3);
 
+    aSRGBToLinear = nAttr.create("sRGBToLinear", "srl", MFnNumericData::kBoolean, false);
+    nAttr.setKeyable(true);
+
     MStatus s;
-    s = addAttribute(aFilePath);    CHECK_MSTATUS_AND_RETURN_IT(s);
-    s = addAttribute(aSplatScale);  CHECK_MSTATUS_AND_RETURN_IT(s);
-    s = addAttribute(aOpacityMult); CHECK_MSTATUS_AND_RETURN_IT(s);
-    s = addAttribute(aShDegree);    CHECK_MSTATUS_AND_RETURN_IT(s);
+    s = addAttribute(aFilePath);      CHECK_MSTATUS_AND_RETURN_IT(s);
+    s = addAttribute(aSplatScale);    CHECK_MSTATUS_AND_RETURN_IT(s);
+    s = addAttribute(aOpacityMult);   CHECK_MSTATUS_AND_RETURN_IT(s);
+    s = addAttribute(aShDegree);      CHECK_MSTATUS_AND_RETURN_IT(s);
+    s = addAttribute(aSRGBToLinear);  CHECK_MSTATUS_AND_RETURN_IT(s);
 
     return MS::kSuccess;
 }

@@ -15,6 +15,7 @@ public:
     static MObject  aSplatScale;
     static MObject  aOpacityMult;
     static MObject  aShDegree;
+    static MObject  aSRGBToLinear;
 
     SplatData       splatData;
     bool            dirty = true;

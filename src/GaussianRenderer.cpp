@@ -152,7 +152,7 @@ void GaussianRenderer::sort(const MMatrix& wvm) {
     }
 }
 
-void GaussianRenderer::draw(const MHWRender::MDrawContext& ctx, float splatScale, float opacityMult, int shDegree, const float camPos[3]) {
+void GaussianRenderer::draw(const MHWRender::MDrawContext& ctx, float splatScale, float opacityMult, int shDegree, const float camPos[3], bool sRGBToLinear) {
     static std::once_flag glewOnce;
     std::call_once(glewOnce, []() {
         glewExperimental = GL_TRUE;
@@ -216,6 +216,7 @@ void GaussianRenderer::draw(const MHWRender::MDrawContext& ctx, float splatScale
     if (effectiveDegree < 0) effectiveDegree = 0;
     glUniform1i(       drawUniforms_.shDegree,           effectiveDegree);
     glUniform1i(       drawUniforms_.restFloatsPerSplat, restFloatsPerSplat_);
+    glUniform1i(       drawUniforms_.sRGBToLinear,       sRGBToLinear ? 1 : 0);
     glUniform3fv(      drawUniforms_.camPos,             1, camPos); // M2: precomputed in prepareForDraw
 
     glBindVertexArray(vao_);
@@ -307,6 +308,7 @@ void GaussianRenderer::buildShaderProgram() {
             drawUniforms_.viewport           = glGetUniformLocation(drawProgram_, "u_viewport");
             drawUniforms_.shDegree           = glGetUniformLocation(drawProgram_, "u_shDegree");
             drawUniforms_.restFloatsPerSplat = glGetUniformLocation(drawProgram_, "u_restFloatsPerSplat");
+            drawUniforms_.sRGBToLinear       = glGetUniformLocation(drawProgram_, "u_sRGBToLinear");
             drawUniforms_.camPos             = glGetUniformLocation(drawProgram_, "u_camPos");
         }
     }

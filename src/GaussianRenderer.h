@@ -26,7 +26,8 @@ public:
               float        splatScale,
               float        opacityMult,
               int          shDegree,
-              const float  camPos[3]);
+              const float  camPos[3],
+              bool         sRGBToLinear);
 
     int loadedShDegree() const { return loadedShDegree_; }
 
@@ -59,6 +60,7 @@ private:
     struct {
         GLint wvm = -1, pm = -1, splatScale = -1, opacityMult = -1;
         GLint viewport = -1, shDegree = -1, restFloatsPerSplat = -1, camPos = -1;
+        GLint sRGBToLinear = -1;
     } drawUniforms_;
     struct {
         GLint wvm = -1, numSplats = -1;
