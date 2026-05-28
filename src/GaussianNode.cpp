@@ -52,7 +52,7 @@ MStatus GaussianNode::initialize() {
     nAttr.setKeyable(true);
     nAttr.setNiceNameOverride("sRGB To Linear");
 
-    aGamma = nAttr.create("gamma", "gam", MFnNumericData::kFloat, 2.2);
+    aGamma = nAttr.create("gamma", "gam", MFnNumericData::kFloat, 1.0);
     nAttr.setKeyable(true);
     nAttr.setMin(0.1); nAttr.setMax(5.0);
 
