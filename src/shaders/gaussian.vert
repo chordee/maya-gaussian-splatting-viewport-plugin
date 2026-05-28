@@ -20,7 +20,7 @@ uniform ivec4 u_viewport;
 uniform int   u_shDegree;            // 0 = DC only, up to 3 = full view-dependent
 uniform int   u_restFloatsPerSplat;  // stride into sh_rest (9, 24, or 45)
 uniform int   u_sRGBToLinear;        // non-zero → apply pow(color, 2.2) after clamp
-uniform float u_gamma;               // always-on extra gamma applied after the sRGB stage (1.0 = no-op)
+uniform float u_gamma;               // always-on display gamma: pow(color, 1/gamma). 1.0 = no-op, >1 brightens
 uniform vec3  u_camPos;              // camera position in world space
 
 out vec2  v_uv;
@@ -131,9 +131,11 @@ void main() {
     if (u_sRGBToLinear != 0) {
         color = pow(color, vec3(2.2));
     }
-    // Independent extra gamma curve (1.0 = no-op). Applied on top of the
-    // sRGB stage regardless of whether that toggle is on.
-    color = pow(color, vec3(u_gamma));
+    // Independent display-gamma curve (1.0 = no-op). Applied on top of the
+    // sRGB stage regardless of whether that toggle is on. We invert the
+    // exponent so the slider matches user intuition: gamma > 1 brightens,
+    // gamma < 1 darkens.
+    color = pow(color, vec3(1.0 / u_gamma));
 
     // 3. Covariance Projection (EWA splatting)
     mat3 R = quatToMat(rot);
