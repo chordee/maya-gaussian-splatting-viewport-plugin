@@ -12,7 +12,7 @@ in Autodesk Maya Viewport 2.0.
 - EWA Splatting: full GPU projection of 3D covariance to 2D ellipses
 - GPU Bitonic Sort: depth sort skipped when camera is static (performance optimization)
 - Maya scene integration: Reversed-Z depth test compatible, non-destructive
-- Maya node attributes: `filePath`, `splatScale`, `opacityMult`, `shDegree`
+- Maya node attributes: `filePath`, `splatScale`, `opacityMult`, `shDegree`, `sRGBToLinear`, `gamma`
 
 ## Requirements
 
@@ -90,6 +90,13 @@ Adjustable attributes:
 - `shDegree`   — SH evaluation cap, `0`–`3` (default `3`). Capped at the highest
   degree present in the loaded PLY; lower it to trade view-dependent fidelity
   for vertex-shader cost.
+- `sRGBToLinear` — bool (default `on`). When enabled, applies a fixed
+  `pow(color, 2.2)` after SH evaluation, undoing the sRGB encoding most
+  3DGS training pipelines bake into the SH coefficients. Turn off when
+  your Maya viewport is not in linear-workflow mode.
+- `gamma` — display-gamma curve, `0.1`–`5.0` (default `1.0`). Independent
+  of `sRGBToLinear`; the shader applies `pow(color, 1/gamma)` on top of
+  the sRGB stage. Values above `1.0` brighten, values below `1.0` darken.
 
 ## Architecture
 

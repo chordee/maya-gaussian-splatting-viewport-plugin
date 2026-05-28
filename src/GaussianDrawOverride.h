@@ -22,6 +22,8 @@ public:
     float   splatScale;
     float   opacityMult;
     int     shDegree;
+    bool    sRGBToLinear;
+    float   gamma;
 };
 
 class GaussianDrawOverride : public MHWRender::MPxDrawOverride {
